@@ -1,7 +1,7 @@
 import threading
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
-    QTableWidget, QTableWidgetItem, QGroupBox
+    QTableWidget, QTableWidgetItem, QGroupBox, QHeaderView
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from tinkoff.invest import Client, CandleInterval
@@ -96,9 +96,11 @@ class TickerWindow(QGroupBox):
         self.class_code_combo = QComboBox()
         self.class_code_combo.setPlaceholderText("Выберите площадку")
         self.class_code_combo.currentIndexChanged.connect(self.on_class_code_changed)
+        self.class_code_combo.setMaximumWidth(200) # Ограничиваем ширину
 
         self.ticker_combo = QComboBox()
         self.ticker_combo.setPlaceholderText("Выберите тикер")
+        self.ticker_combo.setMaximumWidth(250) # Ограничиваем ширину
 
         self.add_button = QPushButton("Добавить")
         self.add_button.clicked.connect(self.add_ticker)
@@ -117,6 +119,7 @@ class TickerWindow(QGroupBox):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(self.table.SelectRows)
         self.table.setSelectionMode(self.table.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive) # Разрешаем интерактивное изменение размеров
 
         # Кнопка удаления
         self.remove_button = QPushButton("Удалить")
