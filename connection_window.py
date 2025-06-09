@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 from tinkoff.invest import Client
+from account_info_window import AccountInfoWindow # Добавлено
 
 class ConnectionWindow(QWidget):
     def __init__(self, parent=None):
@@ -17,7 +18,7 @@ class ConnectionWindow(QWidget):
         layout.setSpacing(15)
         
         # Auth group
-        auth_group = QGroupBox("АВТОРИЗАЦИЯ")
+        self.auth_group = QGroupBox("АВТОРИЗАЦИЯ")
         auth_layout = QHBoxLayout()
         
         self.token_input = QLineEdit()
@@ -29,23 +30,14 @@ class ConnectionWindow(QWidget):
         
         auth_layout.addWidget(self.token_input)
         auth_layout.addWidget(self.auth_button)
-        auth_group.setLayout(auth_layout)
+        self.auth_group.setLayout(auth_layout)
         
-        # Accounts group
-        self.accounts_group = QGroupBox("МОИ СЧЕТА")
-        self.accounts_group.setVisible(False)
+        # Создаем экземпляр AccountInfoWindow
+        self.account_info_window = AccountInfoWindow(self.parent) # Передаем parent из main.py
+        self.account_info_window.setVisible(False) # Скрываем до авторизации
         
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        self.accounts_widget = QWidget()
-        self.accounts_layout = QVBoxLayout(self.accounts_widget)
-        scroll.setWidget(self.accounts_widget)
-        
-        self.accounts_group.setLayout(QVBoxLayout())
-        self.accounts_group.layout().addWidget(scroll)
-        
-        layout.addWidget(auth_group)
-        layout.addWidget(self.accounts_group)
+        layout.addWidget(self.auth_group)
+        layout.addWidget(self.account_info_window) # Добавляем напрямую
         layout.addStretch()
     
     def connect_to_api(self):
@@ -57,37 +49,27 @@ class ConnectionWindow(QWidget):
         try:
             with Client(token) as client:
                 # Test connection
-                client.users.get_accounts()
-                self.parent.token = token
+                accounts_response = client.users.get_accounts() # Получаем ответ с аккаунтами
+                
+                if not accounts_response.accounts:
+                    self.parent.show_info("Нет доступных счетов")
+                    self.parent.update_status(False)
+                    self.account_info_window.setVisible(False) # Скрыть кабинет
+                    return
+
+                # Используем первый найденный аккаунт по умолчанию
+                first_account_id = accounts_response.accounts[0].id
+
+                self.parent.token = token # Сохраняем токен в главном окне
                 self.parent.update_status(True, "Успешное подключение")
-                self.show_accounts(client)
+                
+                # Скрываем блок авторизации и показываем блок с информацией о счете
+                self.auth_group.setVisible(False)
+                self.account_info_window.setVisible(True) # Показываем кабинет
+
+                # Передаем токен и account_id в AccountInfoWindow для загрузки данных
+                self.account_info_window.set_account_info(token, first_account_id)
                 
         except Exception as e:
-            self.parent.update_status(False, f"Ошибка подключения: {str(e)}")
-            self.accounts_group.setVisible(False)
-    
-    def show_accounts(self, client):
-        # Clear previous accounts
-        while self.accounts_layout.count():
-            item = self.accounts_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-        
-        accounts = client.users.get_accounts()
-        if not accounts.accounts:
-            self.parent.show_info("Нет доступных счетов")
-            return
-            
-        for account in accounts.accounts:
-            group = QGroupBox(account.name)
-            form = QFormLayout()
-            
-            form.addRow("ID:", QLabel(account.id))
-            form.addRow("Тип:", QLabel(str(account.type).split('.')[-1]))
-            form.addRow("Статус:", QLabel(str(account.status).split('.')[-1]))
-            
-            group.setLayout(form)
-            self.accounts_layout.addWidget(group)
-        
-        self.accounts_group.setVisible(True)
+            self.parent.update_status(False, f"Ошибка подключения: {str(e)}") # ИСПРАВЛЕНО: Используем update_status
+            self.account_info_window.setVisible(False) # Скрыть кабинет
