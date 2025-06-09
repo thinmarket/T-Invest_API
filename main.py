@@ -1,14 +1,15 @@
 import sys
 from datetime import datetime
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                            QHBoxLayout, QLabel, QSplitter, QFrame, QSizePolicy,
+                            QHBoxLayout, QLabel, QSplitter, QFrame, QSizePolicy,\
                             QGroupBox, QScrollArea)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 
 from styles import setup_palette
-from connection_window import ConnectionWindow
+from connection_window import ConnectionWindow # connection_window теперь будет содержать всю логику кабинета
 from ticker_window import TickerWindow
+# from account_info_window import AccountInfoWindow # Удалено
 
 class TinkoffInvestApp(QMainWindow):
     def __init__(self):
@@ -60,14 +61,16 @@ class TinkoffInvestApp(QMainWindow):
         content_layout.setContentsMargins(15, 15, 15, 15)
         content_layout.setSpacing(15)
         
-        # Left panel (connection)
+        # Left panel (connection and account info)
         self.connection_window = ConnectionWindow(self)
+        self.connection_window.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # Установка политики размера
         
         # Right panel (info and instruments)
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(15)
+        right_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # Установка политики размера
         
         # Info group
         self.info_group = QGroupBox("ИНФОРМАЦИЯ")
@@ -80,15 +83,21 @@ class TinkoffInvestApp(QMainWindow):
         # Instruments group
         self.ticker_window = TickerWindow(self)
         self.ticker_window.setVisible(False)
-        
+
+        # self.account_info_window = AccountInfoWindow(self) # Удалено
+        # self.account_info_window.setVisible(False) # Удалено
+
         right_layout.addWidget(self.info_group)
         right_layout.addWidget(self.ticker_window)
+        # right_layout.addWidget(self.account_info_window) # Удалено
         right_layout.addStretch()
         
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.connection_window)
         splitter.addWidget(right_panel)
-        splitter.setSizes([400, 600])
+        splitter.setSizes([400, 600]) # Возможно, эти размеры также нужно будет скорректировать
+        splitter.setStretchFactor(0, 1) # Даем левой панели возможность расширяться
+        splitter.setStretchFactor(1, 2) # Даем правой панели больше места для расширения
         
         content_layout.addWidget(splitter)
         main_layout.addWidget(content_widget)
@@ -106,12 +115,18 @@ class TinkoffInvestApp(QMainWindow):
             self.status_label.setText("Авторизован")
             self.status_label.setStyleSheet("color: #4CAF50;")
             self.ticker_window.setVisible(True)
+            # self.account_info_window.setVisible(True) # Удалено
         else:
             self.status_label.setText("Не авторизован")
             self.status_label.setStyleSheet("color: #FF5252;")
             self.ticker_window.setVisible(False)
+            # self.account_info_window.setVisible(False) # Удалено
         if message:
             self.show_info(message)
+
+    # Новый метод для передачи данных счета
+    # def display_account_data(self, token, account_id): # Удалено, т.к. ConnectionWindow теперь сам управляет этим
+    #     self.account_info_window.set_account_info(token, account_id)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
