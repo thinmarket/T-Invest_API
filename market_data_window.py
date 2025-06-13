@@ -73,7 +73,7 @@ class MarketDataStreamer(QObject):
                                 subscription_action=SubscriptionAction.SUBSCRIPTION_ACTION_SUBSCRIBE,
                                 instruments=[OrderBookInstrument(
                                     instrument_id=self.figi,
-                                    depth=10
+                                    depth=50
                                 )],
                             )
                         )
