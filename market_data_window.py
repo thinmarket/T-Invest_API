@@ -22,7 +22,7 @@ from tinkoff.invest.exceptions import AioRequestError
 from datetime import datetime
 import pytz
 import traceback
-from analytics_window import AnalyticsWindow
+from analytics_window import AnalyticsWindow  # Добавлен импорт
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def quotation_to_float(quotation: Quotation) -> float:
     return float(f"{quotation.units}.{abs(quotation.nano):09d}")
 
 class MarketDataStreamer(QObject):
-    raw_data_received = pyqtSignal(str)  # Новый сигнал для сырых данных
+    raw_data_received = pyqtSignal(str)
     data_updated = pyqtSignal(dict)
     stream_error = pyqtSignal(str)
     connection_status = pyqtSignal(bool)
@@ -67,7 +67,6 @@ class MarketDataStreamer(QObject):
 
                 async def request_iterator():
                     try:
-                        # Подписка на стакан
                         yield MarketDataRequest(
                             subscribe_order_book_request=SubscribeOrderBookRequest(
                                 subscription_action=SubscriptionAction.SUBSCRIPTION_ACTION_SUBSCRIBE,
@@ -77,8 +76,6 @@ class MarketDataStreamer(QObject):
                                 )],
                             )
                         )
-
-                        # Подписка на сделки
                         yield MarketDataRequest(
                             subscribe_trades_request=SubscribeTradesRequest(
                                 subscription_action=SubscriptionAction.SUBSCRIPTION_ACTION_SUBSCRIBE,
@@ -87,8 +84,6 @@ class MarketDataStreamer(QObject):
                                 )],
                             )
                         )
-
-                        # Подписка на последнюю цену
                         yield MarketDataRequest(
                             subscribe_last_price_request=SubscribeLastPriceRequest(
                                 subscription_action=SubscriptionAction.SUBSCRIPTION_ACTION_SUBSCRIBE,
@@ -112,18 +107,14 @@ class MarketDataStreamer(QObject):
                     if not self.running:
                         break
 
-                    # Отправляем сырые данные для отладки
                     raw_data = f"--- Raw Market Data Response ---\n{response}\n\n"
                     self.raw_data_received.emit(raw_data)
 
                     try:
-                        # Обработка данных для UI
                         data = {}
 
-                        # КОРРЕКЦИЯ: Использование 'orderbook', 'trade', 'last_price' (поля с маленькой буквы)
-                        # для получения актуальных данных, а не ответов на подписку.
                         if hasattr(response, 'orderbook') and response.orderbook is not None:
-                            order_book = response.orderbook # ИСПРАВЛЕНО
+                            order_book = response.orderbook
                             asks = []
                             for ask in order_book.asks:
                                 if ask.price is not None:
@@ -149,18 +140,19 @@ class MarketDataStreamer(QObject):
                             }
 
                         if hasattr(response, 'trade') and response.trade is not None:
-                            trade = response.trade # ИСПРАВЛЕНО (было правильно)
+                            trade = response.trade
                             if trade.price is not None:
+                                trade_time = trade.time.astimezone(MOSCOW_TZ)
                                 trade_data = {
                                     "price": quotation_to_float(trade.price),
                                     "quantity": trade.quantity,
                                     "direction": trade.direction,
-                                    "time": trade.time.astimezone(MOSCOW_TZ).strftime("%H:%M:%S.%f")[:-3]
+                                    "time": trade_time.strftime("%H:%M:%S.%f")[:-3]  # Формат: 10:34:38.634
                                 }
                                 data["trade"] = trade_data
 
                         if hasattr(response, 'last_price') and response.last_price is not None:
-                            last_price = response.last_price # ИСПРАВЛЕНО (было правильно)
+                            last_price = response.last_price
                             if last_price.price is not None:
                                 data["last_price"] = {
                                     "price": quotation_to_float(last_price.price),
@@ -214,23 +206,20 @@ class MarketDataWindow(QGroupBox):
         self.token = None
         self.selected_figi = None
         self.streamer = None
-        # Словарь для агрегации объемов сделок по цене, теперь с разделением на покупку/продажу
         self.trade_volumes_by_price: Dict[float, Dict[str, int]] = {}
-        self.current_asks: List[Dict[str, Any]] = [] # Для хранения текущих asks
-        self.current_bids: List[Dict[str, Any]] = [] # Для хранения текущих bids
-        self.last_price_value: Optional[float] = None # Для хранения последней цены
+        self.current_asks: List[Dict[str, Any]] = []
+        self.current_bids: List[Dict[str, Any]] = []
+        self.last_price_value: Optional[float] = None
         self.class_codes = []
         self.ticker_map = {}
+        self.analytics_window = AnalyticsWindow(self)  # Создаем окно аналитики
         self.init_ui()
-        self.analytics_window = AnalyticsWindow(self) # Новый экземпляр окна аналитики
-        self.analytics_window.hide() # Скрываем по умолчанию
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 15, 10, 10)
         main_layout.setSpacing(15)
 
-        # Instrument selection
         select_layout = QHBoxLayout()
         self.class_code_combo = QComboBox()
         self.class_code_combo.setPlaceholderText("Выберите площадку")
@@ -256,18 +245,19 @@ class MarketDataWindow(QGroupBox):
             }
         """)
 
-        self.analytics_button = QPushButton("Аналитик")
+        # Добавляем кнопку для открытия аналитики
+        self.analytics_button = QPushButton("Аналитика")
         self.analytics_button.clicked.connect(self.open_analytics_window)
         self.analytics_button.setStyleSheet("""
             QPushButton {
-                background-color: #007BFF;
+                background-color: #2196F3;
                 color: white;
                 border: none;
                 padding: 8px 16px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #0056b3;
+                background-color: #1976D2;
             }
         """)
 
@@ -276,26 +266,21 @@ class MarketDataWindow(QGroupBox):
         select_layout.addWidget(QLabel("Тикер:"))
         select_layout.addWidget(self.ticker_combo)
         select_layout.addWidget(self.stream_button)
-        select_layout.addWidget(self.analytics_button)
-
+        select_layout.addWidget(self.analytics_button)  # Добавляем кнопку аналитики
         main_layout.addLayout(select_layout)
 
-        # Splitter for order book table and raw data output
         splitter = QSplitter(Qt.Vertical)
 
-        # Order Book Table
         order_book_group = QGroupBox("Стакан и Сделки")
         order_book_layout = QVBoxLayout(order_book_group)
-
         self.order_book_table = QTableWidget()
-        # Изменение количества колонок на 5 для разделения покупок и продаж
         self.order_book_table.setColumnCount(5)
         self.order_book_table.setHorizontalHeaderLabels([
-            "Объем Покупок",      # Колонка 0: Агрегированный объем сделок на покупку
-            "Заявки Покупка",     # Колонка 1: Количество бидов
-            "Цена",                 # Колонка 2: Цена
-            "Заявки Продажа",     # Колонка 3: Количество асков
-            "Объем Продаж"       # Колонка 4: Агрегированный объем сделок на продажу
+            "Объем Покупок",
+            "Заявки Покупка",
+            "Цена",
+            "Заявки Продажа",
+            "Объем Продаж"
         ])
         self.order_book_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.order_book_table.verticalHeader().setVisible(False)
@@ -304,7 +289,6 @@ class MarketDataWindow(QGroupBox):
         order_book_layout.addWidget(self.order_book_table)
         splitter.addWidget(order_book_group)
 
-        # Raw data output
         raw_data_group = QGroupBox("Сырые данные (DEBUG)")
         raw_data_layout = QVBoxLayout(raw_data_group)
         self.raw_data_text_edit = QTextEdit()
@@ -315,7 +299,6 @@ class MarketDataWindow(QGroupBox):
 
         main_layout.addWidget(splitter)
 
-        # Status bar
         self.status_label = QLabel("Статус: Не активен")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet("""
@@ -325,6 +308,13 @@ class MarketDataWindow(QGroupBox):
             }
         """)
         main_layout.addWidget(self.status_label)
+
+    def open_analytics_window(self):
+        """Открывает окно аналитики"""
+        if self.analytics_window:
+            self.analytics_window.show()
+            self.analytics_window.raise_()
+            self.analytics_window.activateWindow()
 
     def set_token(self, token):
         self.token = token
@@ -429,16 +419,12 @@ class MarketDataWindow(QGroupBox):
         self.streamer.stream_error.connect(self.display_error)
         self.streamer.connection_status.connect(self.update_connection_status)
 
-        # Очищаем все данные при запуске нового стрима
         self.trade_volumes_by_price.clear()
         self.current_asks = []
         self.current_bids = []
         self.last_price_value = None
         self.order_book_table.clearContents()
         self.order_book_table.setRowCount(0)
-        self.analytics_window.large_buys = [] # Очищаем данные аналитики
-        self.analytics_window.large_sells = [] # Очищаем данные аналитики
-        self.analytics_window.display_large_trades() # Обновляем таблицы аналитики
 
         self.streamer.start_stream()
         self.stream_button.setText("Остановить стрим")
@@ -457,35 +443,26 @@ class MarketDataWindow(QGroupBox):
 
     @pyqtSlot(str)
     def on_raw_data_received(self, raw_data: str):
-        """Обработчик сырых данных из стрима"""
         self.raw_data_text_edit.append(raw_data)
-        # Автоматическая прокрутка к новым данным
         cursor = self.raw_data_text_edit.textCursor()
         cursor.movePosition(cursor.End)
         self.raw_data_text_edit.setTextCursor(cursor)
 
     @pyqtSlot(dict)
     def on_data_updated(self, data: dict):
-        """
-        Обработчик структурированных данных. Обновляет внутреннее состояние
-        и затем перерисовывает таблицу стакана на основе всего состояния.
-        """
         logger.debug(f"on_data_updated called with data keys: {data.keys()}")
 
         if "order_book" in data:
             self.current_asks = data["order_book"]["asks"]
             self.current_bids = data["order_book"]["bids"]
             logger.debug(f"Updated current_asks (len={len(self.current_asks)}) and current_bids (len={len(self.current_bids)})")
-            logger.debug(f"Current asks: {self.current_asks}")
-            logger.debug(f"Current bids: {self.current_bids}")
-
 
         if "trade" in data:
             trade_data = data["trade"]
             price = trade_data["price"]
             quantity = trade_data["quantity"]
-            direction = trade_data["direction"] # Получаем направление сделки
-
+            direction = trade_data["direction"]
+            
             if price not in self.trade_volumes_by_price:
                 self.trade_volumes_by_price[price] = {"buy": 0, "sell": 0}
             
@@ -497,19 +474,16 @@ class MarketDataWindow(QGroupBox):
             logger.debug(f"Processed trade: price={price}, quantity={quantity}, direction={direction.name}. Total buy/sell volume for {price}: {self.trade_volumes_by_price[price]}")
             
             # Передаем данные о сделке в окно аналитики
-            self.analytics_window.update_trades_data(trade_data)
-
+            if hasattr(self, 'analytics_window') and self.analytics_window:
+                self.analytics_window.update_trades_data(trade_data)
 
         if "last_price" in data:
             self.last_price_value = data["last_price"]["price"]
             logger.debug(f"Updated last_price_value: {self.last_price_value}")
         
-        # После обновления всех частей состояния, перерисовываем таблицу
         self._update_order_book_table_display()
 
-
     def _update_order_book_table_display(self):
-        """Полностью перерисовывает таблицу стакана на основе текущего состояния."""
         self.order_book_table.clearContents()
         
         logger.debug(f"Redrawing table. current_asks: {self.current_asks}")
@@ -517,7 +491,6 @@ class MarketDataWindow(QGroupBox):
         logger.debug(f"Redrawing table. trade_volumes_by_price: {self.trade_volumes_by_price}")
         logger.debug(f"Redrawing table. last_price_value: {self.last_price_value}")
 
-        # Собираем все уникальные цены из asks, bids и trade_volumes
         all_prices_set = set()
         for ask in self.current_asks:
             all_prices_set.add(ask["price"])
@@ -526,20 +499,17 @@ class MarketDataWindow(QGroupBox):
         for price in self.trade_volumes_by_price.keys():
             all_prices_set.add(price)
 
-        # Сортируем цены от больших к меньшим, чтобы аски были сверху, биды снизу
         all_prices = sorted(list(all_prices_set), reverse=True) 
 
         self.order_book_table.setRowCount(len(all_prices))
         
         for row_idx, price in enumerate(all_prices):
-            # Колонка 0: Объем Покупок (Сделки)
             buy_volume = self.trade_volumes_by_price.get(price, {}).get("buy", "")
             item_buy_volume = QTableWidgetItem(str(buy_volume) if buy_volume != "" else "")
             item_buy_volume.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             item_buy_volume.setForeground(QColor(Qt.darkGreen))
             self.order_book_table.setItem(row_idx, 0, item_buy_volume)
 
-            # Колонка 1: Заявки Покупка (Биды)
             bid_quantity = ""
             for bid in self.current_bids:
                 if bid["price"] == price:
@@ -550,13 +520,11 @@ class MarketDataWindow(QGroupBox):
             item_bid_quantity.setForeground(QColor(Qt.green))
             self.order_book_table.setItem(row_idx, 1, item_bid_quantity)
             
-            # Колонка 2: Цена
             price_str = f"{price:.3f}" if int(price * 1000) % 10 != 0 else f"{price:.2f}"
             item_price = QTableWidgetItem(price_str)
             item_price.setTextAlignment(Qt.AlignCenter)
             self.order_book_table.setItem(row_idx, 2, item_price)
 
-            # Колонка 3: Заявки Продажа (Аски)
             ask_quantity = ""
             for ask in self.current_asks:
                 if ask["price"] == price:
@@ -567,59 +535,45 @@ class MarketDataWindow(QGroupBox):
             item_ask_quantity.setForeground(QColor(Qt.red))
             self.order_book_table.setItem(row_idx, 3, item_ask_quantity)
 
-            # Колонка 4: Объем Продаж (Сделки)
             sell_volume = self.trade_volumes_by_price.get(price, {}).get("sell", "")
             item_sell_volume = QTableWidgetItem(str(sell_volume) if sell_volume != "" else "")
             item_sell_volume.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             item_sell_volume.setForeground(QColor(Qt.darkRed))
             self.order_book_table.setItem(row_idx, 4, item_sell_volume)
 
-
-            # Выделение строки, если это цена последней сделки
             if self.last_price_value is not None and self.last_price_value == price:
                 for col in range(self.order_book_table.columnCount()):
                     item = self.order_book_table.item(row_idx, col)
                     if item:
-                        item.setBackground(QColor("#0d1a08")) # Dark green background for last price
+                        item.setBackground(QColor("#0d1a08"))
 
-        # Добавление строки "ИТОГО"
         total_buy_volume = sum(v.get("buy", 0) for v in self.trade_volumes_by_price.values())
         total_sell_volume = sum(v.get("sell", 0) for v in self.trade_volumes_by_price.values())
 
         current_row_count = self.order_book_table.rowCount()
         self.order_book_table.setRowCount(current_row_count + 1)
         
-        # Заголовок "ИТОГО" в колонке "Цена"
         total_label_item = QTableWidgetItem("ИТОГО")
         total_label_item.setTextAlignment(Qt.AlignCenter)
         font = total_label_item.font()
         font.setBold(True)
         total_label_item.setFont(font)
-        self.order_book_table.setItem(current_row_count, 2, total_label_item) # Колонка 2: Цена
+        self.order_book_table.setItem(current_row_count, 2, total_label_item)
 
-        # Общий объем покупок
         total_buy_volume_item = QTableWidgetItem(str(total_buy_volume))
         total_buy_volume_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         total_buy_volume_item.setForeground(QColor(Qt.darkGreen))
         total_buy_volume_item.setFont(font)
-        self.order_book_table.setItem(current_row_count, 0, total_buy_volume_item) # Колонка 0: Объем Покупок
+        self.order_book_table.setItem(current_row_count, 0, total_buy_volume_item)
 
-        # Общий объем продаж
         total_sell_volume_item = QTableWidgetItem(str(total_sell_volume))
         total_sell_volume_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         total_sell_volume_item.setForeground(QColor(Qt.darkRed))
         total_sell_volume_item.setFont(font)
-        self.order_book_table.setItem(current_row_count, 4, total_sell_volume_item) # Колонка 4: Объем Продаж
+        self.order_book_table.setItem(current_row_count, 4, total_sell_volume_item)
 
-        # Заявки остаются пустыми для ИТОГО
-        self.order_book_table.setItem(current_row_count, 1, QTableWidgetItem("")) # Колонка 1: Заявки Покупка
-        self.order_book_table.setItem(current_row_count, 3, QTableWidgetItem("")) # Колонка 3: Заявки Продажа
-
-        # Выделение строки "ИТОГО" (по желанию, можно добавить другой цвет)
-        # for col in range(self.order_book_table.columnCount()):
-        #     item = self.order_book_table.item(current_row_count, col)
-        #     if item:
-        #         item.setBackground(QColor("#E0E0E0")) # Light gray background for total row
+        self.order_book_table.setItem(current_row_count, 1, QTableWidgetItem(""))
+        self.order_book_table.setItem(current_row_count, 3, QTableWidgetItem(""))
         
         logger.debug(f"Table update finished. Rows: {self.order_book_table.rowCount()}")
 
@@ -640,11 +594,6 @@ class MarketDataWindow(QGroupBox):
     def closeEvent(self, event):
         if self.streamer:
             self.streamer.stop_stream()
+        if hasattr(self, 'analytics_window') and self.analytics_window:
+            self.analytics_window.close()
         super().closeEvent(event)
-
-    def open_analytics_window(self):
-        if self.analytics_window:
-            self.analytics_window.show()
-            # Можно добавить логику для фокусировки окна или его перемещения, если необходимо
-            self.analytics_window.raise_()
-            self.analytics_window.activateWindow()
